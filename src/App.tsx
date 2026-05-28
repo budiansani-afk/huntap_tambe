@@ -527,7 +527,7 @@ export default function App() {
         await writeAuditLog(
           currentUser,
           'Sinkronisasi Hapus Data',
-          `Menghapus data ID: ${idToDelete} otomatis setelah jaringan kembali online.`
+          `Sinkronisasi otomatis: Berhasil menghapus data Record ID: [${idToDelete}] dari database Cloud.`
         );
       }
 
@@ -538,10 +538,17 @@ export default function App() {
         if (id && id.startsWith('offline-')) {
           // New offline entry, save as new online record
           await saveHuntapRecord(dataCopy);
+          const uploadDetail = [
+            itemToSave.fotoRumah && 'Rumah',
+            itemToSave.fotoKtpKk && 'KTP/KK',
+            itemToSave.fotoDokTanah && 'Dokumen Tanah',
+            itemToSave.fotoShm && 'SHM'
+          ].filter(Boolean).join(', ') || 'Tidak ada';
+
           await writeAuditLog(
             currentUser,
             'Sinkronisasi Tambah Data',
-            `Menambahkan KK baru: ${itemToSave.nama} (No Rumah: ${itemToSave.nomorRumah}) otomatis setelah kembali online.`
+            `Sinkronisasi otomatis: Menambahkan KK baru offline: ${itemToSave.nama} (Unit No: ${itemToSave.nomorRumah || '-'}), Wilayah: Kec. ${itemToSave.kecamatan}, Desa ${itemToSave.desa}. Dokumen: ${itemToSave.dokumenTanah || '-'} (No: ${itemToSave.nomorSuratTanah || '-'}), SHM: ${itemToSave.terimaSertipikat || '-'}. Foto: [${uploadDetail}]`
           );
         } else if (id) {
           // Existing record updated offline, save as update
@@ -549,7 +556,7 @@ export default function App() {
           await writeAuditLog(
             currentUser,
             'Sinkronisasi Modifikasi Data',
-            `Memperbarui No Rumah: ${itemToSave.nomorRumah} (KK: ${itemToSave.nama}) otomatis setelah kembali online.`
+            `Sinkronisasi otomatis: Memperbarui data KK ${itemToSave.nama} (Unit No: ${itemToSave.nomorRumah || '-'}), Wilayah: Kec. ${itemToSave.kecamatan}, Desa ${itemToSave.desa}. Dokumen: ${itemToSave.dokumenTanah || '-'} - SHM: ${itemToSave.terimaSertipikat || '-'}.`
           );
         } else {
           await saveHuntapRecord(dataCopy);
@@ -632,16 +639,76 @@ export default function App() {
       await saveHuntapRecord(itemData);
 
       if (itemData.id) {
+        const oldItem = displayData.find((itm) => itm.id === itemData.id);
+        const changes: string[] = [];
+        if (oldItem) {
+          if (oldItem.nama !== itemData.nama) {
+            changes.push(`Nama diubah dari "${oldItem.nama}" ke "${itemData.nama}"`);
+          }
+          if (oldItem.nomorRumah !== itemData.nomorRumah) {
+            changes.push(`No Rumah diubah dari "${oldItem.nomorRumah || '-'}" ke "${itemData.nomorRumah || '-'}"`);
+          }
+          if (oldItem.kecamatan !== itemData.kecamatan) {
+            changes.push(`Kecamatan "${oldItem.kecamatan}" ke "${itemData.kecamatan}"`);
+          }
+          if (oldItem.desa !== itemData.desa) {
+            changes.push(`Desa "${oldItem.desa}" ke "${itemData.desa}"`);
+          }
+          if (oldItem.luas !== itemData.luas) {
+            changes.push(`Luas Kavling dari "${oldItem.luas || '-'}" ke "${itemData.luas || '-'}"`);
+          }
+          if (oldItem.dokumenTanah !== itemData.dokumenTanah) {
+            changes.push(`Alas Hak dari "${oldItem.dokumenTanah || '-'}" ke "${itemData.dokumenTanah || '-'}"`);
+          }
+          if (oldItem.noHp !== itemData.noHp) {
+            changes.push(`No HP/Kontak dari "${oldItem.noHp || '-'}" ke "${itemData.noHp || '-'}"`);
+          }
+          if (oldItem.terimaSertipikat !== itemData.terimaSertipikat) {
+            changes.push(`Penerimaan Sertipikat dari "${oldItem.terimaSertipikat}" ke "${itemData.terimaSertipikat}"`);
+          }
+          if (oldItem.keterangan !== itemData.keterangan) {
+            changes.push(`Keterangan dari "${oldItem.keterangan || '-'}" ke "${itemData.keterangan || '-'}"`);
+          }
+          if (oldItem.koordinat !== itemData.koordinat) {
+            changes.push(`Koordinat Fisik dari "${oldItem.koordinat || '-'}" ke "${itemData.koordinat || '-'}"`);
+          }
+          
+          // Photo changes
+          if (oldItem.fotoRumah && !itemData.fotoRumah) changes.push(`Foto Rumah dihapus`);
+          else if (!oldItem.fotoRumah && itemData.fotoRumah) changes.push(`Foto Rumah diunggah`);
+          else if (oldItem.fotoRumah && itemData.fotoRumah && oldItem.fotoRumah !== itemData.fotoRumah) changes.push(`Foto Rumah diperbarui`);
+
+          if (oldItem.fotoKtpKk && !itemData.fotoKtpKk) changes.push(`Foto KTP/KK dihapus`);
+          else if (!oldItem.fotoKtpKk && itemData.fotoKtpKk) changes.push(`Foto KTP/KK diunggah`);
+          else if (oldItem.fotoKtpKk && itemData.fotoKtpKk && oldItem.fotoKtpKk !== itemData.fotoKtpKk) changes.push(`Foto KTP/KK diperbarui`);
+
+          if (oldItem.fotoDokTanah && !itemData.fotoDokTanah) changes.push(`Foto Dokumen Tanah dihapus`);
+          else if (!oldItem.fotoDokTanah && itemData.fotoDokTanah) changes.push(`Foto Dokumen Tanah diunggah`);
+          else if (oldItem.fotoDokTanah && itemData.fotoDokTanah && oldItem.fotoDokTanah !== itemData.fotoDokTanah) changes.push(`Foto Dokumen Tanah diperbarui`);
+
+          if (oldItem.fotoShm && !itemData.fotoShm) changes.push(`Foto SHM dihapus`);
+          else if (!oldItem.fotoShm && itemData.fotoShm) changes.push(`Foto SHM diunggah`);
+          else if (oldItem.fotoShm && itemData.fotoShm && oldItem.fotoShm !== itemData.fotoShm) changes.push(`Foto SHM diperbarui`);
+        }
+
+        const logDetails = changes.length > 0 ? changes.join('; ') : 'Tidak ada perubahan field';
         await writeAuditLog(
           currentUser,
           'Modifikasi Data',
-          `Memperbarui No Rumah: ${itemData.nomorRumah} (Keluarga ${itemData.nama})`
+          `Memperbarui KK ${itemData.nama} (Unit No: ${itemData.nomorRumah || '-'}). Modifikasi: [${logDetails}]`
         );
       } else {
+        const uploadDetail = [
+          itemData.fotoRumah && 'Rumah',
+          itemData.fotoKtpKk && 'KTP/KK',
+          itemData.fotoDokTanah && 'Dokumen Tanah',
+          itemData.fotoShm && 'SHM'
+        ].filter(Boolean).join(', ') || 'Tidak ada';
+
         await writeAuditLog(
           currentUser,
           'Tambah Data',
-          `Menambahkan Penerima Baru: ${itemData.nama} di unit No ${itemData.nomorRumah}`
+          `Menambahkan KK baru: ${itemData.nama} (Unit No: ${itemData.nomorRumah || '-'}), Wilayah: Kec. ${itemData.kecamatan}, Desa ${itemData.desa}. Luas Kavling: ${itemData.luas || '-'} m², Dokumen: ${itemData.dokumenTanah || '-'} (No Kontak: ${itemData.noHp || '-'}), Status SHM: ${itemData.terimaSertipikat || '-'}, Koordinat: [${itemData.koordinat || '-'}]. Unggahan Foto: [${uploadDetail}]`
         );
       }
 
@@ -697,10 +764,13 @@ export default function App() {
         }
 
         await deleteHuntapRecord(id);
+        const deleteDetailPics = photosToDelete.length > 0
+          ? `, juga menghapus ${photosToDelete.length} berkas foto dari penyimpanan Cloudinary`
+          : '';
         await writeAuditLog(
           currentUser,
           'Hapus Data',
-          `Menghapus data KK ${targetItem.nama} (Unit No: ${targetItem.nomorRumah})`
+          `Menghapus data KK ${targetItem.nama} (Unit No: ${targetItem.nomorRumah || '-'}), Wilayah: Kec. ${targetItem.kecamatan}, Desa ${targetItem.desa}. Dokumen: ${targetItem.dokumenTanah || '-'} (${targetItem.terimaSertipikat || '-'} SHM)${deleteDetailPics}.`
         );
         alert('Data berhasil dihapus dari cloud.');
       } catch (err) {
