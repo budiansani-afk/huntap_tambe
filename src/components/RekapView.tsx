@@ -367,7 +367,7 @@ export default function RekapView({
                     {item.keterangan && (
                       <div className="border-b border-slate-750 pb-3.5">
                         <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">Catatan</p>
-                        <p className="text-slate-250 text-xs mt-1 font-bold">{item.keterangan}</p>
+                        <p className="text-slate-200 text-xs mt-1 font-bold">{item.keterangan}</p>
                       </div>
                     )}
 
