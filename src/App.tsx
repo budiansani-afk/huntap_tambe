@@ -6,6 +6,7 @@ import RekapView from './components/RekapView';
 import PetaView from './components/PetaView';
 import RiwayatView from './components/RiwayatView';
 import DetailModal from './components/DetailModal';
+import { deleteFromCloudinary } from './cloudinary';
 
 import { PenerimaHuntap, UserLog } from './types';
 import { INITIAL_HUN_DATA, INITIAL_LOGS_DATA } from './data';
@@ -679,6 +680,22 @@ export default function App() {
       }
 
       try {
+        // Hapus foto-foto terkait dari Cloudinary secara otomatis
+        const photosToDelete = [
+          targetItem.fotoRumah,
+          targetItem.fotoKtpKk,
+          targetItem.fotoDokTanah,
+          targetItem.fotoShm,
+        ].filter((url) => typeof url === 'string' && url.trim().length > 0);
+
+        if (photosToDelete.length > 0) {
+          Promise.allSettled(
+            photosToDelete.map((photoUrl) => deleteFromCloudinary(photoUrl))
+          ).then((results) => {
+            console.log('Proses penghapusan aset gambar di Cloudinary otomatis selesai:', results);
+          });
+        }
+
         await deleteHuntapRecord(id);
         await writeAuditLog(
           currentUser,

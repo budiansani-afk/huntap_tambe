@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PenerimaHuntap } from '../types';
 import { DATA_WILAYAH } from '../data';
+import { deleteFromCloudinary } from '../cloudinary';
 import {
   Save,
   X,
@@ -274,6 +275,28 @@ export default function InputView({ editItem, onSave, onCancelEdit, currentUser 
     }
   };
 
+  const handleResetPhoto = async (photoUrl: string, setter: (url: string) => void) => {
+    if (!photoUrl) return;
+
+    const confirmDelete = window.confirm(
+      "Apakah Anda yakin ingin menghapus foto ini? File foto juga akan dihapus secara permanen dari penyimpanan Cloudinary."
+    );
+    if (!confirmDelete) return;
+
+    setter('');
+
+    try {
+      const success = await deleteFromCloudinary(photoUrl);
+      if (success) {
+        console.log("Foto berhasil dihapus secara permanen dari Cloudinary.");
+      } else {
+        console.warn("Foto gagal dihapus dari Cloudinary atau bukan url Cloudinary valid.");
+      }
+    } catch (err) {
+      console.error("Gagal melakukan request penghapusan gambar:", err);
+    }
+  };
+
   return (
     <div className="p-4 space-y-5">
       {/* Edit indicator */}
@@ -507,7 +530,7 @@ export default function InputView({ editItem, onSave, onCancelEdit, currentUser 
                 {item.value && (
                   <button
                     type="button"
-                    onClick={() => item.setter('')}
+                    onClick={() => handleResetPhoto(item.value, item.setter)}
                     className="p-1 px-2 border border-rose-500/25 bg-rose-500/10 text-rose-400 rounded-xl hover:bg-rose-500/25 text-xs font-black"
                   >
                     Reset
