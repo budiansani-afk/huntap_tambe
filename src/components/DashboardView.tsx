@@ -31,8 +31,8 @@ export default function DashboardView({ data, onQuickFilter, onSeed, seeding }: 
   // Group by Blocks (A, B, C, D, E, etc.)
   const blockMap: Record<string, { total: number; sudah: number }> = {};
   data.forEach((item) => {
-    const blockMatch = item.nomorRumah?.match(/^([A-Z0-9]+)\./);
-    const block = blockMatch ? blockMatch[1] : 'Lainnya';
+    const blockMatch = item.nomorRumah?.match(/^([A-Za-z0-9]+)\./);
+    const block = blockMatch ? blockMatch[1].toUpperCase() : 'Lainnya';
     if (!blockMap[block]) {
       blockMap[block] = { total: 0, sudah: 0 };
     }
@@ -41,7 +41,9 @@ export default function DashboardView({ data, onQuickFilter, onSeed, seeding }: 
       blockMap[block].sudah += 1;
     }
   });
-  const blockList = Object.entries(blockMap).sort((a, b) => a[0].localeCompare(b[0]));
+  const blockList = Object.entries(blockMap).sort((a, b) => {
+    return a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' });
+  });
 
   // Document types breakdown
   const docCounts: Record<string, number> = {};
@@ -242,7 +244,7 @@ export default function DashboardView({ data, onQuickFilter, onSeed, seeding }: 
       {/* Block Certification Stack Matrix */}
       <div className="bg-slate-800 border border-slate-750 p-4 rounded-2xl shadow-md">
         <h3 className="text-base font-extrabold text-slate-200 mb-4 flex items-center gap-2">
-          <Award className="w-4 h-4 text-emerald-400" /> Analisis Blok Per Rumah
+          <Award className="w-4 h-4 text-emerald-400" /> Progres SHM Per Blok
         </h3>
 
         {blockList.length === 0 ? (
@@ -252,8 +254,13 @@ export default function DashboardView({ data, onQuickFilter, onSeed, seeding }: 
             {blockList.map(([block, info]) => {
               const sudahPerc = (info.sudah / info.total) * 100;
               return (
-                <div key={block} className="flex items-center gap-3">
-                  <span className="w-10 text-sm font-black text-slate-300">Blok {block}</span>
+                <div
+                  key={block}
+                  onClick={() => onQuickFilter('nomorRumah', block)}
+                  className="flex items-center gap-3 cursor-pointer hover:bg-slate-750/50 p-1.5 rounded-xl transition-all"
+                  title={`Klik untuk memfilter data Rekap berdasarkan Blok ${block}`}
+                >
+                  <span className="w-12 text-sm font-black text-slate-300 shrink-0">Blok {block}</span>
                   <div className="flex-1 bg-slate-700 h-3.5 rounded-lg overflow-hidden flex">
                     <div
                       className="bg-emerald-500 h-full text-[9px] font-bold text-slate-900 flex items-center justify-center transition-all duration-700"
@@ -270,7 +277,7 @@ export default function DashboardView({ data, onQuickFilter, onSeed, seeding }: 
                       {info.total - info.sudah > 0 && `${Math.round(100 - sudahPerc)}%`}
                     </div>
                   </div>
-                  <span className="text-sm text-slate-300 font-extrabold w-12 text-right">
+                  <span className="text-sm text-slate-300 font-extrabold w-12 text-right shrink-0">
                     {info.total} KK
                   </span>
                 </div>

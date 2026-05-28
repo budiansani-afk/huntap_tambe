@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PenerimaHuntap } from '../types';
 import { DATA_WILAYAH } from '../data';
 import {
@@ -42,7 +42,9 @@ export default function RekapView({
   const [filterStatus, setFilterStatus] = useState(
     initialFilterField === 'terimaSertipikat' ? initialFilterValue : ''
   );
-  const [filterBlock, setFilterBlock] = useState('');
+  const [filterBlock, setFilterBlock] = useState(
+    initialFilterField === 'nomorRumah' ? initialFilterValue : ''
+  );
   const [searchText, setSearchText] = useState(
     initialFilterField === 'dokumenTanah' ? initialFilterValue : ''
   );
@@ -50,14 +52,49 @@ export default function RekapView({
   // Card expanded items
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Sync quick filters from parent (e.g., clicking on blocks on dashboard)
+  useEffect(() => {
+    if (initialFilterField === 'terimaSertipikat') {
+      setFilterStatus(initialFilterValue);
+      setFilterBlock('');
+      setSearchText('');
+    } else if (initialFilterField === 'dokumenTanah') {
+      setSearchText(initialFilterValue);
+      setFilterStatus('');
+      setFilterBlock('');
+    } else if (initialFilterField === 'nomorRumah') {
+      setFilterBlock(initialFilterValue);
+      setFilterStatus('');
+      setSearchText('');
+    } else if (initialFilterField === '' && initialFilterValue === '') {
+      setFilterKec('');
+      setFilterDesa('');
+      setFilterStatus('');
+      setFilterBlock('');
+      setSearchText('');
+    }
+  }, [initialFilterField, initialFilterValue]);
+
   // Derived filter options
   const kecSet = new Set(data.map((item) => item.kecamatan).filter(Boolean));
   const desSet = new Set(data.map((item) => item.desa).filter(Boolean));
 
+  // Dynamic Blocks extraction
+  const blockSet = new Set<string>();
+  data.forEach((item) => {
+    const blockMatch = item.nomorRumah?.match(/^([A-Za-z0-9]+)\./);
+    if (blockMatch) {
+      blockSet.add(blockMatch[1].toUpperCase());
+    }
+  });
+  const sortedBlocks = Array.from(blockSet).sort((a, b) => {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
   // Filter application
   const filteredData = data.filter((item) => {
-    const blockMatch = item.nomorRumah?.match(/^([A-Z0-9]+)\./);
-    const itemBlock = blockMatch ? blockMatch[1] : '';
+    const blockMatch = item.nomorRumah?.match(/^([A-Za-z0-9]+)\./);
+    const itemBlock = blockMatch ? blockMatch[1].toUpperCase() : '';
 
     if (filterKec && item.kecamatan !== filterKec) return false;
     if (filterDesa && item.desa !== filterDesa) return false;
@@ -227,7 +264,7 @@ export default function RekapView({
               className="bg-slate-850 border border-slate-700/60 rounded-lg px-2 py-2 text-xs font-bold text-slate-200 w-full cursor-pointer outline-none"
             >
               <option value="">Semua</option>
-              {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((b) => (
+              {sortedBlocks.map((b) => (
                 <option key={b} value={b}>
                   Blok {b}
                 </option>
