@@ -219,7 +219,13 @@ export default function InputView({ editItem, onSave, onCancelEdit, currentUser 
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        ctx.save();
+        if (facingMode === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
         setCapturedImage(dataUrl);
       }
@@ -579,13 +585,13 @@ export default function InputView({ editItem, onSave, onCancelEdit, currentUser 
 
           <div className="relative w-full max-w-sm aspect-square bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
             {capturedImage ? (
-              <img src={capturedImage} alt="Captured" className="w-[100%] h-[100%] object-cover" />
+              <img src={capturedImage} alt="Captured" className="w-full h-full object-cover" />
             ) : (
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
-                className="w-[100%] h-[100%] object-cover transform scale-x-10"
+                className={`w-full h-full object-cover ${facingMode === 'user' ? '-scale-x-100' : ''}`}
               ></video>
             )}
 
