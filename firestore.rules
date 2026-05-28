@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Catch-all Default-Deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions for auth verification
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAtMostSize(val, maxSize) {
+      return val is string && val.size() <= maxSize;
+    }
+
+    // Entity validator for Penerima Huntap to avoid data poisoning
+    function isValidPenerima(data) {
+      return data.nomorRumah is string && data.nomorRumah.size() <= 20 
+        && data.nama is string && data.nama.size() <= 120
+        && (!('kecamatan' in data) || data.kecamatan is string)
+        && (!('desa' in data) || data.desa is string)
+        && (!('luas' in data) || data.luas == null || data.luas is number)
+        && (!('dokumenTanah' in data) || data.dokumenTanah is string)
+        && (!('terimaSertipikat' in data) || data.terimaSertipikat == 'Sudah' || data.terimaSertipikat == 'Belum')
+        && (!('noHp' in data) || data.noHp is string)
+        && (!('koordinat' in data) || data.koordinat is string)
+        && (!('keterangan' in data) || data.keterangan is string)
+        && (!('fotoRumah' in data) || data.fotoRumah is string)
+        && (!('fotoKtpKk' in data) || data.fotoKtpKk is string)
+        && (!('fotoDokTanah' in data) || data.fotoDokTanah is string)
+        && (!('fotoShm' in data) || data.fotoShm is string);
+    }
+
+    // Entity validator for UserLog to avoid unprofiled telemetry
+    function isValidLog(data) {
+      return data.user is string 
+        && data.aksi is string
+        && data.detail is string;
+    }
+
+    // Rules for huntap_data collection (public read, authenticated write)
+    match /huntap_data/{docId} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && isValidPenerima(request.resource.data);
+      allow delete: if isSignedIn();
+    }
+
+    // Rules for huntap_logs collection
+    match /huntap_logs/{docId} {
+      allow read: if true;
+      allow create: if isValidLog(request.resource.data);
+      allow update, delete: if isSignedIn();
+    }
+  }
+}

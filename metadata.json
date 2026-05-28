@@ -1,0 +1,6 @@
+{
+  "name": "Huntap Bima Mobile",
+  "description": "Aplikasi pendataan dan sertipikasi Rumah Hunian Tetap (Huntap) Kabupaten Bima berbasis mobile-first.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "PenerimaHuntap": {
+      "title": "Penerima Huntap",
+      "description": "Informasi kepala keluarga, fisik bangunan, lampiran dokumen, dan koordinat GPS.",
+      "type": "object",
+      "properties": {
+        "nomorRumah": {
+          "type": "string",
+          "description": "Nomor blok dan rumah"
+        },
+        "nama": {
+          "type": "string",
+          "description": "Nama Kepala Keluarga"
+        },
+        "kecamatan": {
+          "type": "string",
+          "description": "Kecamatan wilayah asal"
+        },
+        "desa": {
+          "type": "string",
+          "description": "Desa wilayah asal"
+        },
+        "luas": {
+          "type": "number",
+          "description": "Luas tanah dalam meter persegi"
+        },
+        "dokumenTanah": {
+          "type": "string",
+          "description": "Jenis bukti kepemilikan tanah asal"
+        },
+        "terimaSertipikat": {
+          "type": "string",
+          "enum": ["Sudah", "Belum"],
+          "description": "Status penerimaan SHM"
+        },
+        "noHp": {
+          "type": "string",
+          "description": "Nomor kontak kepala keluarga"
+        },
+        "koordinat": {
+          "type": "string",
+          "description": "Latitude dan longitude koordinat luar rumah"
+        },
+        "keterangan": {
+          "type": "string",
+          "description": "Catatan lapangan tambahan"
+        },
+        "fotoRumah": {
+          "type": "string",
+          "description": "URL foto fisik bangunan"
+        },
+        "fotoKtpKk": {
+          "type": "string",
+          "description": "URL foto KTP atau KK"
+        },
+        "fotoDokTanah": {
+          "type": "string",
+          "description": "URL foto berkas tanah lama"
+        },
+        "fotoShm": {
+          "type": "string",
+          "description": "URL foto sertipikat baru yang diserahkan"
+        }
+      },
+      "required": ["nomorRumah", "nama"]
+    },
+    "UserLog": {
+      "title": "Aktivitas Log",
+      "description": "Catatan log audit aktivitas oleh tim pendataan.",
+      "type": "object",
+      "properties": {
+        "user": {
+          "type": "string"
+        },
+        "aksi": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "waktu": {
+          "type": "string"
+        }
+      },
+      "required": ["user", "aksi", "detail"]
+    }
+  },
+  "firestore": {
+    "/huntap_data/{documentId}": {
+      "schema": "PenerimaHuntap",
+      "description": "Koleksi data penerima dan kelayakan sertifikasi Huntap Bima."
+    },
+    "/huntap_logs/{documentId}": {
+      "schema": "UserLog",
+      "description": "Koleksi logs audit aktivitas manipulasi data."
+    }
+  }
+}
