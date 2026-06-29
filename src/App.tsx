@@ -609,14 +609,14 @@ export default function App() {
     }
   };
 
-  const handleSaveItem = async (itemData: Omit<PenerimaHuntap, 'id'> & { id?: string }) => {
+  const handleSaveItem = async (itemData: Omit<PenerimaHuntap, 'id'> & { id?: string }, isBulk = false) => {
     if (currentUser === 'Tamu') {
-      alert('Akses Ditolak! Tamu hanya diizinkan untuk melihat laporan.');
+      if (!isBulk) alert('Akses Ditolak! Tamu hanya diizinkan untuk melihat laporan.');
       return;
     }
 
     if (!isOnline) {
-      const targetId = itemData.id || `offline-${Date.now()}`;
+      const targetId = itemData.id || `offline-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       const localItem = { ...itemData, id: targetId };
 
       setPendingSaves((prev) => {
@@ -629,9 +629,11 @@ export default function App() {
         return [...prev, localItem];
       });
 
-      setEditItem(null);
-      setActiveTab('rekap');
-      alert('Koneksi offline. Data disimpan lokal di perangkat ini dan akan diunggah otomatis saat jaringan terhubung.');
+      if (!isBulk) {
+        setEditItem(null);
+        setActiveTab('rekap');
+        alert('Koneksi offline. Data disimpan lokal di perangkat ini dan akan diunggah otomatis saat jaringan terhubung.');
+      }
       return;
     }
 
@@ -712,17 +714,21 @@ export default function App() {
         );
       }
 
-      setEditItem(null);
-      setActiveTab('rekap');
-      alert('Sukses! Data berhasil diamankan langsung di Cloud.');
+      if (!isBulk) {
+        setEditItem(null);
+        setActiveTab('rekap');
+        alert('Sukses! Data berhasil diamankan langsung di Cloud.');
+      }
     } catch (err) {
       console.warn("Gagal menyimpan ke cloud, beralih ke mode offline: ", err);
-      const targetId = itemData.id || `offline-${Date.now()}`;
+      const targetId = itemData.id || `offline-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       const localItem = { ...itemData, id: targetId };
       setPendingSaves((prev) => [...prev, localItem]);
-      setEditItem(null);
-      setActiveTab('rekap');
-      alert('Gagal menyimpan online. Perubahan disimpan offline pada perangkat ini.');
+      if (!isBulk) {
+        setEditItem(null);
+        setActiveTab('rekap');
+        alert('Gagal menyimpan online. Perubahan disimpan offline pada perangkat ini.');
+      }
     }
   };
 

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PenerimaHuntap } from '../types';
 import { DATA_WILAYAH } from '../data';
 import { deleteFromCloudinary } from '../cloudinary';
+import { saveHuntapRecord, writeAuditLog } from '../firebase';
+import * as XLSX from 'xlsx';
 import {
   Save,
   X,
@@ -13,11 +15,18 @@ import {
   CheckCircle,
   AlertCircle,
   RefreshCw,
+  FileSpreadsheet,
+  Upload,
+  Trash2,
+  HelpCircle,
+  Download,
+  UploadCloud,
+  Sparkles,
 } from 'lucide-react';
 
 interface InputViewProps {
   editItem: PenerimaHuntap | null;
-  onSave: (data: Omit<PenerimaHuntap, 'id'> & { id?: string }) => void;
+  onSave: (data: Omit<PenerimaHuntap, 'id'> & { id?: string }, isBulk?: boolean) => void | Promise<void>;
   onCancelEdit: () => void;
   currentUser: string;
 }
@@ -49,6 +58,13 @@ export default function InputView({ editItem, onSave, onCancelEdit, currentUser 
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [activeUploadField, setActiveUploadField] = useState<string | null>(null);
+
+  // Excel Import States
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [importedRows, setImportedRows] = useState<any[]>([]);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -297,51 +313,517 @@ export default function InputView({ editItem, onSave, onCancelEdit, currentUser 
     }
   };
 
+  // Excel Import handlers
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsing(true);
+    setImportSuccessMessage(null);
+    setImportedRows([]);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const bstr = event.target?.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rawJson = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+        if (rawJson.length === 0) {
+          alert('File Excel kosong atau tidak terbaca.');
+          setIsParsing(false);
+          return;
+        }
+
+        const parsedData = rawJson.map((row: any) => {
+          const item: Record<string, any> = {};
+          
+          Object.entries(row).forEach(([key, val]) => {
+            const cleanKey = key.trim().toLowerCase().replace(/[\s_/]/g, '');
+            
+            if (cleanKey === 'nomorrumah' || cleanKey === 'norumah' || cleanKey === 'blok' || cleanKey === 'blokrumah') {
+              item.nomorRumah = String(val).trim().toUpperCase();
+            } else if (cleanKey === 'nama' || cleanKey === 'namalengkap' || cleanKey === 'namapenerima' || cleanKey === 'penghuni') {
+              item.nama = String(val).trim();
+            } else if (cleanKey === 'kecamatan' || cleanKey === 'kec') {
+              item.kecamatan = String(val).trim();
+            } else if (cleanKey === 'desa' || cleanKey === 'kelurahan') {
+              item.desa = String(val).trim();
+            } else if (cleanKey === 'luas' || cleanKey === 'luaskavling' || cleanKey === 'luasm2') {
+              const numLuas = Number(val);
+              item.luas = isNaN(numLuas) ? null : numLuas;
+            } else if (cleanKey === 'dokumentanah' || cleanKey === 'alashak' || cleanKey === 'surattanah') {
+              item.dokumenTanah = String(val).trim();
+            } else if (cleanKey === 'sertipikat' || cleanKey === 'statussertipikat' || cleanKey === 'statusshm' || cleanKey === 'terimasertipikat') {
+              const cleanVal = String(val).trim().toLowerCase();
+              item.terimaSertipikat = (cleanVal === 'sudah' || cleanVal === 'yes' || cleanVal === 'ada' || cleanVal === 'shm') ? 'Sudah' : 'Belum';
+            } else if (cleanKey === 'nohp' || cleanKey === 'kontak' || cleanKey === 'telepon' || cleanKey === 'phone') {
+              item.noHp = String(val).trim();
+            } else if (cleanKey === 'koordinat' || cleanKey === 'gps' || cleanKey === 'latlong') {
+              item.koordinat = String(val).trim();
+            } else if (cleanKey === 'keterangan' || cleanKey === 'catatan') {
+              item.keterangan = String(val).trim();
+            }
+          });
+
+          return {
+            nomorRumah: item.nomorRumah || '',
+            nama: item.nama || '',
+            kecamatan: item.kecamatan || '',
+            desa: item.desa || '',
+            luas: item.luas !== undefined ? item.luas : null,
+            dokumenTanah: item.dokumenTanah || '',
+            terimaSertipikat: item.terimaSertipikat || 'Belum',
+            noHp: item.noHp || '',
+            koordinat: item.koordinat || '',
+            keterangan: item.keterangan || '',
+            fotoRumah: '',
+            fotoKtpKk: '',
+            fotoDokTanah: '',
+            fotoShm: '',
+          };
+        });
+
+        setImportedRows(parsedData);
+      } catch (err) {
+        console.error(err);
+        alert('Gagal membaca file Excel. Pastikan file dalam format .xlsx atau .xls.');
+      } finally {
+        setIsParsing(false);
+      }
+    };
+
+    reader.onerror = () => {
+      alert('Error saat membaca file.');
+      setIsParsing(false);
+    };
+
+    reader.readAsBinaryString(file);
+  };
+
+  const removeRow = (index: number) => {
+    const updated = [...importedRows];
+    updated.splice(index, 1);
+    setImportedRows(updated);
+  };
+
+  const startImporting = async () => {
+    if (currentUser === 'Tamu') {
+      alert('Akses Ditolak! Akun Tamu hanya memiliki wewenang melihat data.');
+      return;
+    }
+    const validRows = importedRows.filter(row => row.nomorRumah.trim() && row.nama.trim());
+    if (validRows.length === 0) {
+      alert('Tidak ada data valid yang siap diimport (Nama dan No Rumah wajib diisi).');
+      return;
+    }
+
+    const confirmImport = window.confirm(`Apakah Anda yakin ingin mengimport ${validRows.length} data ini ke Firestore?`);
+    if (!confirmImport) return;
+
+    setImportProgress({ current: 0, total: validRows.length });
+
+    try {
+      for (let i = 0; i < validRows.length; i++) {
+        setImportProgress({ current: i + 1, total: validRows.length });
+        await onSave(validRows[i], true);
+      }
+      
+      await writeAuditLog(
+        currentUser,
+        'Impor Massal',
+        `Berhasil mengimport ${validRows.length} data penerima Huntap secara massal dari Excel.`
+      );
+
+      setImportSuccessMessage(`Berhasil mengimport ${validRows.length} data penerima Huntap secara massal!`);
+      setImportedRows([]);
+    } catch (err) {
+      console.error(err);
+      alert('Ada kesalahan saat menyimpan data import.');
+    } finally {
+      setImportProgress(null);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const sampleData = [
+      {
+        'Nomor Rumah': 'A.01',
+        'Nama': 'Ahmad Fauzi',
+        'Kecamatan': 'Sumber',
+        'Desa': 'Pasir',
+        'Luas': 120,
+        'Dokumen Tanah': 'Sertifikat',
+        'Status SHM': 'Sudah',
+        'No HP': '081234567890',
+        'Koordinat': '-7.234567, 110.123456',
+        'Keterangan': 'Pembangunan selesai 100%'
+      },
+      {
+        'Nomor Rumah': 'B.02',
+        'Nama': 'Siti Aminah',
+        'Kecamatan': 'Sumber',
+        'Desa': 'Pasir',
+        'Luas': 135,
+        'Dokumen Tanah': 'AJB',
+        'Status SHM': 'Belum',
+        'No HP': '085678901234',
+        'Koordinat': '-7.234599, 110.123488',
+        'Keterangan': 'Masih dalam proses pematangan lahan'
+      }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(sampleData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Template Import');
+    XLSX.writeFile(workbook, 'Template_Import_Huntap.xlsx');
+  };
+
   return (
     <div className="p-4 space-y-5">
       {/* Edit indicator */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <div>
           <h2 className="text-base font-black text-slate-100 flex items-center gap-2">
-            {editItem ? '✏️ Edit Data Penerima' : '➕ Input Penerima Baru'}
+            {editItem ? '✏️ Edit Data Penerima' : showImportPanel ? '📂 Import Massal Excel' : '➕ Input Penerima Baru'}
           </h2>
-          <p className="text-slate-400 text-xs">Isi formulir kelayakan huntap dengan koordinat fisik.</p>
+          <p className="text-slate-400 text-xs">
+            {editItem 
+              ? 'Ubah detail data kelayakan penerima.' 
+              : showImportPanel 
+                ? 'Unggah berkas spreadsheet untuk mengimport data secara massal.' 
+                : 'Isi formulir kelayakan huntap dengan koordinat fisik.'}
+          </p>
         </div>
-        {editItem && (
+        {editItem ? (
           <button
             onClick={onCancelEdit}
             className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded-lg font-bold"
           >
             Batal Ubah
           </button>
+        ) : (
+          <button
+            onClick={() => {
+              setShowImportPanel(!showImportPanel);
+              setImportedRows([]);
+              setImportSuccessMessage(null);
+            }}
+            className={`text-xs px-2.5 py-1.5 rounded-lg font-extrabold flex items-center gap-1.5 transition-all ${
+              showImportPanel 
+                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25 hover:bg-rose-500/20' 
+                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20'
+            }`}
+          >
+            {showImportPanel ? (
+              <>
+                <X className="w-3.5 h-3.5" />
+                <span>Batal Import</span>
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Import Excel</span>
+              </>
+            )}
+          </button>
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Identitas Section */}
-        <div className="bg-slate-800 border border-slate-750/70 p-4 rounded-2xl space-y-3.5 shadow-md">
-          <div className="flex items-center gap-2 border-b border-slate-750 pb-2">
-            <CheckCircle className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-black text-slate-300 uppercase shrink-0">1. Identitas & Tata Letak</span>
+      {showImportPanel ? (
+        <div className="space-y-4 animate-fadeIn">
+          {/* Instructions and Download Template */}
+          <div className="bg-slate-800 border border-slate-750 p-4 rounded-2xl shadow-md space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h4 className="text-xs font-black text-slate-200 uppercase">Panduan Import Excel / CSV</h4>
+                <p className="text-slate-400 text-2xs leading-relaxed">
+                  Gunakan template standar agar data terbaca dengan sempurna. Kolom yang dapat terbaca otomatis meliputi:
+                </p>
+                <div className="grid grid-cols-2 gap-1.5 pt-2 text-[10px] font-mono text-slate-300">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span>Nomor Rumah (A.01, B.02) *</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span>Nama Lengkap *</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span>Kecamatan</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span>Desa</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0"></span>
+                    <span>Luas Kavling (m²)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0"></span>
+                    <span>Dokumen Tanah</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0"></span>
+                    <span>Status SHM</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0"></span>
+                    <span>No HP (Kontak)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0"></span>
+                    <span>Koordinat GPS</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0"></span>
+                    <span>Keterangan</span>
+                  </div>
+                </div>
+                <p className="text-slate-400 text-[10px] pt-1">
+                  * Kolom Nomor Rumah dan Nama Lengkap wajib diisi agar data dapat disimpan ke sistem.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-750/70 flex justify-end">
+              <button
+                type="button"
+                onClick={downloadTemplate}
+                className="text-xs bg-slate-850 hover:bg-slate-750 text-slate-200 border border-slate-700/60 px-3 py-2 rounded-xl font-bold flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Unduh Template Excel</span>
+              </button>
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-2xs font-extrabold text-slate-400 uppercase">Nomor Rumah *</label>
-            <input
-              type="text"
-              required
-              value={nomorRumah}
-              onChange={(e) => setNomorRumah(e.target.value.toUpperCase())}
-              placeholder="Contoh: A.01, B.12"
-              className="bg-slate-850 border border-slate-700/60 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-full font-bold uppercase"
-            />
-          </div>
+          {/* Upload Area / Form */}
+          {importSuccessMessage ? (
+            <div className="bg-emerald-500/10 border border-emerald-500/25 p-5 rounded-2xl text-center space-y-3">
+              <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle className="w-7 h-7" />
+              </div>
+              <h3 className="text-sm font-black text-slate-100">Proses Import Selesai</h3>
+              <p className="text-xs text-slate-350 max-w-sm mx-auto leading-relaxed">
+                {importSuccessMessage}
+              </p>
+              <div className="pt-2 flex justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setImportSuccessMessage(null)}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
+                >
+                  Import File Lain
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImportPanel(false);
+                    setImportSuccessMessage(null);
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
+                >
+                  Selesai
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {importedRows.length === 0 ? (
+                <div className="border-2 border-dashed border-slate-700/80 rounded-2xl bg-slate-800/40 p-8 text-center hover:bg-slate-800/75 transition-all relative">
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={handleFileImport}
+                    disabled={isParsing}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="space-y-3 pointer-events-none">
+                    <div className="w-12 h-12 bg-slate-850 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-slate-700/50">
+                      {isParsing ? (
+                        <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+                      ) : (
+                        <UploadCloud className="w-6 h-6" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-slate-200">
+                        {isParsing ? 'Membaca data berkas...' : 'Pilih atau Seret Berkas ke Sini'}
+                      </p>
+                      <p className="text-slate-500 text-[10px] mt-1">
+                        Mendukung ekstensi .xlsx, .xls, .csv (Maksimal 5MB)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Results summary and action buttons */}
+                  <div className="bg-slate-800 border border-slate-750 p-4 rounded-2xl flex items-center justify-between shadow-md">
+                    <div>
+                      <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Total Data Terbaca</span>
+                      <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-2xl font-black text-slate-100">{importedRows.length}</span>
+                        <span className="text-xs text-slate-400">baris terdeteksi</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setImportedRows([])}
+                        className="bg-slate-850 hover:bg-slate-750 text-slate-300 border border-slate-700/60 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Reset Berkas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={startImporting}
+                        className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Proses Import ({importedRows.filter(r => r.nomorRumah && r.nama).length} Valid)</span>
+                      </button>
+                    </div>
+                  </div>
 
-          <div className="space-y-1">
-            <label className="text-2xs font-extrabold text-slate-400 uppercase">Nama Penghuni *</label>
-            <input
-              type="text"
-              required
+                  {/* List preview of parsed rows */}
+                  <div className="bg-slate-800 border border-slate-750 rounded-2xl overflow-hidden shadow-md">
+                    <div className="p-3 bg-slate-850/60 border-b border-slate-750 flex items-center justify-between">
+                      <span className="text-2xs font-extrabold text-slate-300 uppercase tracking-wide">Pratinjau Data Impor</span>
+                      <span className="text-[10px] bg-slate-750 text-slate-400 px-2 py-0.5 rounded-full font-bold">
+                        {importedRows.filter(r => r.nomorRumah && r.nama).length} valid / {importedRows.length} baris
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-750 max-h-96 overflow-y-auto">
+                      {importedRows.map((row, idx) => {
+                        const isValid = row.nomorRumah.trim() && row.nama.trim();
+                        return (
+                          <div key={idx} className={`p-3.5 flex items-start justify-between gap-3 transition-colors ${isValid ? 'hover:bg-slate-750/20' : 'bg-rose-500/5'}`}>
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${
+                                  isValid 
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                    : 'bg-rose-500/15 text-rose-400 border border-rose-500/25'
+                                }`}>
+                                  {row.nomorRumah || 'Tanpa No Rumah'}
+                                </span>
+                                <h5 className="text-xs font-bold text-slate-200 truncate">{row.nama || 'Tanpa Nama'}</h5>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-slate-400">
+                                <div>
+                                  <span className="font-semibold">Wilayah:</span> Kec. {row.kecamatan || '-'}, Desa {row.desa || '-'}
+                                </div>
+                                <div>
+                                  <span className="font-semibold">Sertipikat:</span> {row.terimaSertipikat || '-'}
+                                </div>
+                                <div>
+                                  <span className="font-semibold">Kontak:</span> {row.noHp || '-'}
+                                </div>
+                                <div>
+                                  <span className="font-semibold">Koordinat:</span> {row.koordinat || '-'}
+                                </div>
+                                {row.luas && (
+                                  <div className="col-span-2">
+                                    <span className="font-semibold">Luas Kavling:</span> {row.luas} m²
+                                  </div>
+                                )}
+                                {row.keterangan && (
+                                  <div className="col-span-2 italic text-slate-500">
+                                    "{row.keterangan}"
+                                  </div>
+                                )}
+                              </div>
+
+                              {!isValid && (
+                                <p className="text-[10px] text-rose-400 font-extrabold flex items-center gap-1">
+                                  <AlertCircle className="w-3.5 h-3.5" />
+                                  <span>Kolom Nomor Rumah dan Nama Lengkap wajib diisi! Row ini akan dilewati.</span>
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeRow(idx)}
+                              className="p-1.5 bg-slate-850 hover:bg-rose-500/15 text-slate-400 hover:text-rose-400 border border-slate-700/60 rounded-xl transition-all cursor-pointer"
+                              title="Hapus baris ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Import Processing Progress Modal overlay */}
+          {importProgress && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-55 flex flex-col items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-750 p-6 rounded-2xl shadow-2xl max-w-sm w-full space-y-4 text-center">
+                <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mx-auto" />
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-slate-100 uppercase tracking-wide">Sedang Mengimport Data</h4>
+                  <p className="text-xs text-slate-400">Silakan tunggu, data sedang disimpan ke Firebase Firestore.</p>
+                </div>
+                
+                {/* Progress bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] text-slate-300 font-bold font-mono">
+                    <span>Progres: {importProgress.current} / {importProgress.total}</span>
+                    <span>{Math.round((importProgress.current / importProgress.total) * 100)}%</span>
+                  </div>
+                  <div className="bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-300"
+                      style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Identitas Section */}
+          <div className="bg-slate-800 border border-slate-750/70 p-4 rounded-2xl space-y-3.5 shadow-md">
+            <div className="flex items-center gap-2 border-b border-slate-750 pb-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-black text-slate-300 uppercase shrink-0">1. Identitas & Tata Letak</span>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-2xs font-extrabold text-slate-400 uppercase">Nomor Rumah *</label>
+              <input
+                type="text"
+                required
+                value={nomorRumah}
+                onChange={(e) => setNomorRumah(e.target.value.toUpperCase())}
+                placeholder="Contoh: A.01, B.12"
+                className="bg-slate-850 border border-slate-700/60 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-full font-bold uppercase"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-2xs font-extrabold text-slate-400 uppercase">Nama Penghuni *</label>
+              <input
+                type="text"
+                required
               value={nama}
               onChange={(e) => setNama(e.target.value)}
               placeholder="Ketik nama lengkap"
@@ -581,6 +1063,7 @@ export default function InputView({ editItem, onSave, onCancelEdit, currentUser 
           )}
         </div>
       </form>
+      )}
 
       {/* HTML5 Native Stream Overlay Modal */}
       {showCamera && (
