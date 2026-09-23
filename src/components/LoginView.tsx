@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, User, Sparkles, Eye, EyeOff, ShieldAlert, KeyRound } from 'lucide-react';
+import appLogo from '../assets/images/app_logo_pelaksana_1790154102181.jpg';
 
 interface LoginViewProps {
   onLogin: (username: string, isAdmin: boolean) => void;
@@ -36,8 +37,13 @@ export default function LoginView({ onLogin, onLoginAsGuest }: LoginViewProps) {
   return (
     <div className="flex-1 flex flex-col justify-center p-6 space-y-6">
       <div className="text-center space-y-2">
-        <div className="w-16 h-16 rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center font-black text-2xl mx-auto shadow-sm border border-teal-500/10 animate-pulse">
-          HB
+        <div className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center mx-auto shadow-md border border-slate-750 bg-white/10">
+          <img
+            src={appLogo}
+            alt="Logo Aplikasi Huntap"
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
         </div>
         <div>
           <h2 className="text-lg font-black text-slate-100 flex items-center justify-center gap-1.5 leading-tight">

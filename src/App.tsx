@@ -12,6 +12,7 @@ import { PenerimaHuntap, UserLog } from './types';
 import { INITIAL_HUN_DATA, INITIAL_LOGS_DATA } from './data';
 import { Home, FileText, Database, Map, ClipboardList, Info, Sparkles, Sun, Moon, LogOut } from 'lucide-react';
 import LoginView from './components/LoginView';
+import appLogo from './assets/images/app_logo_pelaksana_1790154102181.jpg';
 
 import { signInAnonymously, signOut } from 'firebase/auth';
 import {
@@ -905,8 +906,13 @@ export default function App() {
               {/* Top Header Navigation Panel for Branding display */}
               <div className="bg-slate-900 border-b border-slate-850 px-4 py-3.5 flex items-center justify-between sticky top-0 z-40">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold">
-                    B
+                  <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-white/10 border border-slate-750/80 shadow-xs shrink-0">
+                    <img
+                      src={appLogo}
+                      alt="Logo Aplikasi Huntap"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                   <div>
                     <h1 className="text-xs font-black text-slate-100 flex items-center gap-1">
